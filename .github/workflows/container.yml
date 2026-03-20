@@ -1,0 +1,30 @@
+name: Container Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y podman
+
+      - name: Build image
+        run: podman build -f Containerfile -t matrix-nio-mcp:ci .
+
+      - name: Verify image runs
+        run: |
+          podman run --rm \
+            -e MATRIX_HOMESERVER=https://matrix.example.com \
+            -e MATRIX_USER_ID=@bot:example.com \
+            -e MATRIX_ACCESS_TOKEN=syt_fake \
+            matrix-nio-mcp:ci python -c "import matrix_nio_mcp; print('import ok')"
