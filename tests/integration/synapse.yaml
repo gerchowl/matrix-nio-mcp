@@ -1,0 +1,28 @@
+# Minimal Synapse config for integration tests — NOT for production use.
+server_name: "localhost"
+pid_file: /data/homeserver.pid
+listeners:
+  - port: 8448
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client, federation]
+        compress: false
+
+database:
+  name: sqlite3
+  args:
+    database: /data/homeserver.db
+
+log_config: /data/log.config
+media_store_path: /data/media_store
+registration_shared_secret: "integration-test-secret"
+report_stats: false
+macaroon_secret_key: "integration-test-macaroon-key"
+form_secret: "integration-test-form-secret"
+signing_key_path: /data/localhost.signing.key
+trusted_key_servers:
+  - server_name: "matrix.org"
+enable_registration: true
+enable_registration_without_verification: true
