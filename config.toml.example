@@ -1,0 +1,17 @@
+# matrix-nio-mcp configuration
+# Copy to config.toml — never commit secrets here.
+# All secrets (access token, password) MUST come from environment variables.
+
+[matrix]
+sync_timeout = 30000
+device_name = "matrix-nio-mcp"
+store_path = "~/.local/share/matrix-nio-mcp/store"
+# trust_policy = "TOFU"  # "TOFU" | "verified_only"
+
+[mcp]
+transport = "stdio"   # "stdio" | "sse"
+sse_port = 8000
+
+[logging]
+level = "INFO"
+format = "json"       # "json" | "pretty"
