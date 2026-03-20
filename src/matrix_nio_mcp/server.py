@@ -47,7 +47,7 @@ from .schemas import (
     UnbanUserInput,
 )
 from .session import Session
-from .tools import members, media, messages, profile, rooms
+from .tools import members, media, messages, profile, rooms, spaces
 
 load_dotenv()
 
@@ -331,9 +331,9 @@ async def _dispatch(session: Session, name: str, args: dict[str, Any]) -> Any:
         case "send_state_event":
             return await rooms.send_state_event(session, SendStateEventInput(**args))
         case "list_space_children":
-            return await rooms.list_space_children(session, ListSpaceChildrenInput(**args))
+            return await spaces.list_space_children(session, ListSpaceChildrenInput(**args))
         case "add_room_to_space":
-            return await rooms.add_room_to_space(session, AddRoomToSpaceInput(**args))
+            return await spaces.add_room_to_space(session, AddRoomToSpaceInput(**args))
         # --- Members ---
         case "get_room_members":
             return await members.get_room_members(session, GetRoomMembersInput(**args))
@@ -387,14 +387,22 @@ async def _run() -> None:
 
     @server.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> list[TextContent]:
+        import time
         args = arguments or {}
+        t0 = time.monotonic()
+        logger.debug("tool_call_start", tool=name)
         try:
             result = await _dispatch(session, name, args)
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            logger.info("tool_call_ok", tool=name, elapsed_ms=elapsed_ms)
             return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
         except MatrixError as exc:
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            logger.warning("tool_call_matrix_error", tool=name, error=exc.code, elapsed_ms=elapsed_ms)
             return [TextContent(type="text", text=json.dumps(exc.to_dict(), ensure_ascii=False))]
         except Exception as exc:
-            logger.exception("tool_error", tool=name, error=str(exc))
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            logger.exception("tool_call_error", tool=name, error=str(exc), elapsed_ms=elapsed_ms)
             return [TextContent(type="text", text=json.dumps({"error": "internal_error", "message": str(exc)}))]
 
     # Graceful shutdown
@@ -410,27 +418,44 @@ async def _run() -> None:
     logger.info("server_starting", transport=cfg.mcp.transport)
 
     if cfg.mcp.transport == "sse":
+        from contextlib import asynccontextmanager
+
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse
         from starlette.routing import Mount, Route
         import uvicorn
 
         sse = SseServerTransport("/messages/")
 
-        async def handle_sse(request):  # type: ignore[no-untyped-def]
+        async def handle_sse(request: Request) -> None:
             async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
                 await server.run(streams[0], streams[1], server.create_initialization_options())
 
-        app = Starlette(routes=[
-            Route("/sse", endpoint=handle_sse),
-            Mount("/messages/", app=sse.handle_post_message),
-        ])
+        async def health(request: Request) -> JSONResponse:
+            return JSONResponse({"status": "ok", "user_id": cfg.matrix.user_id})
+
+        @asynccontextmanager
+        async def lifespan(app: Starlette):  # type: ignore[type-arg]
+            yield
+            await session.stop()
+
+        app = Starlette(
+            lifespan=lifespan,
+            routes=[
+                Route("/health", endpoint=health),
+                Route("/sse", endpoint=handle_sse),
+                Mount("/messages/", app=sse.handle_post_message),
+            ],
+        )
         config = uvicorn.Config(app, host="0.0.0.0", port=cfg.mcp.sse_port, log_level="error")
         srv = uvicorn.Server(config)
         await srv.serve()
     else:
         async with stdio_server() as (read_stream, write_stream):
             await server.run(read_stream, write_stream, server.create_initialization_options())
+        await session.stop()
 
 
 def main() -> None:

@@ -44,3 +44,21 @@ synapse-up:
 
 synapse-down:
     docker compose -f tests/integration/docker-compose.yml down -v
+
+# Install project in dev mode (creates .venv and installs all deps incl. dev)
+install:
+    uv sync --all-groups
+
+# Start dev server (SSE transport, pretty logging)
+dev:
+    MCP_TRANSPORT=sse LOG_FORMAT=pretty python -m matrix_nio_mcp.server
+
+# Remove build artifacts, caches, and virtualenv
+clean:
+    rm -rf .venv dist build *.egg-info
+    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+    rm -rf .mypy_cache .ruff_cache .pytest_cache
+
+# Tail container logs
+logs:
+    podman logs -f matrix-nio-mcp 2>/dev/null || podman compose -f tests/integration/docker-compose.yml logs -f
