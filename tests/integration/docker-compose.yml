@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  synapse:
+    image: matrixdotorg/synapse:latest
+    environment:
+      - SYNAPSE_SERVER_NAME=localhost
+      - SYNAPSE_REPORT_STATS=no
+    volumes:
+      - synapse-data:/data
+      - ./synapse.yaml:/data/homeserver.yaml:ro
+    ports:
+      - "8448:8448"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8448/_matrix/client/versions"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  synapse-data:
